@@ -8,6 +8,7 @@ use App\Models\StockBatch;
 use App\Models\StockDocument;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class StockService
 {
@@ -18,6 +19,7 @@ class StockService
      *     occurred_on: string,
      *     reference_number?: string|null,
      *     supplier_id?: int|null,
+     *     purchase_order_id?: int|null,
      *     notes?: string|null,
      *     lines: array<int, array{
      *         item_id: int,
@@ -35,6 +37,7 @@ class StockService
                 'occurred_on' => $data['occurred_on'],
                 'reference_number' => $data['reference_number'] ?? null,
                 'supplier_id' => $data['supplier_id'] ?? null,
+                'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -171,6 +174,174 @@ class StockService
             }
 
             return $document->load('stockMovements');
+        });
+    }
+
+    /**
+     * Record a physical stock adjustment per batch.
+     *
+     * @param  array{
+     *     occurred_on: string,
+     *     notes: string,
+     *     lines: array<int, array{
+     *         item_id: int,
+     *         stock_batch_id?: int|null,
+     *         counted_quantity: int|float|string
+     *     }>
+     * }  $data
+     */
+    public function adjust(array $data): StockDocument
+    {
+        return DB::transaction(function () use ($data): StockDocument {
+            $document = StockDocument::query()->create([
+                'type' => 'adjustment',
+                'occurred_on' => $data['occurred_on'],
+                'notes' => $data['notes'],
+            ]);
+
+            $movementCount = 0;
+
+            foreach ($data['lines'] as $line) {
+                $item = Item::query()
+                    ->lockForUpdate()
+                    ->findOrFail($line['item_id']);
+
+                $batchId = $line['stock_batch_id'] ?? null;
+
+                if ($item->has_expiry && blank($batchId)) {
+                    throw new InvalidArgumentException(
+                        sprintf('Batch stok wajib dipilih untuk barang %s.', $item->name),
+                    );
+                }
+
+                $batch = StockBatch::query()
+                    ->where('item_id', $item->id)
+                    ->when(
+                        filled($batchId),
+                        fn ($query) => $query->whereKey($batchId),
+                        fn ($query) => $query->whereNull('expiry_date'),
+                    )
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($batch === null) {
+                    throw new InvalidArgumentException(
+                        sprintf('Batch stok untuk barang %s tidak ditemukan.', $item->name),
+                    );
+                }
+
+                $counted = bcadd((string) $line['counted_quantity'], '0', 2);
+                $current = bcadd((string) $batch->quantity_remaining, '0', 2);
+                $delta = bcsub($counted, $current, 2);
+
+                if (bccomp($delta, '0', 2) === 0) {
+                    continue;
+                }
+
+                $newQuantity = bcadd($current, $delta, 2);
+
+                if (bccomp($newQuantity, '0', 2) < 0) {
+                    throw new InvalidArgumentException(
+                        sprintf('Stok akhir %s tidak boleh negatif.', $item->name),
+                    );
+                }
+
+                $batch->quantity_remaining = $newQuantity;
+                $batch->save();
+
+                StockMovement::query()->create([
+                    'stock_document_id' => $document->id,
+                    'item_id' => $item->id,
+                    'stock_batch_id' => $batch->id,
+                    'quantity' => $delta,
+                ]);
+
+                $movementCount++;
+            }
+
+            if ($movementCount === 0) {
+                throw new InvalidArgumentException('Tidak ada selisih stok yang perlu disesuaikan.');
+            }
+
+            return $document->load('stockMovements');
+        });
+    }
+
+    /**
+     * Reverse an existing stock document with opposite movements on the same batches.
+     */
+    public function reverse(StockDocument $document, string $reason): StockDocument
+    {
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new InvalidArgumentException('Alasan pembatalan wajib diisi.');
+        }
+
+        return DB::transaction(function () use ($document, $reason): StockDocument {
+            $document = StockDocument::query()
+                ->lockForUpdate()
+                ->findOrFail($document->id);
+
+            if ($document->type === 'reversal') {
+                throw new InvalidArgumentException('Dokumen pembalik tidak dapat dibatalkan.');
+            }
+
+            if ($document->reversedBy()->exists()) {
+                throw new InvalidArgumentException('Dokumen ini sudah dibatalkan.');
+            }
+
+            $movements = $document->stockMovements()
+                ->orderBy('id')
+                ->get();
+
+            if ($movements->isEmpty()) {
+                throw new InvalidArgumentException('Dokumen ini tidak memiliki pergerakan stok.');
+            }
+
+            $reversal = StockDocument::query()->create([
+                'type' => 'reversal',
+                'occurred_on' => now()->toDateString(),
+                'reverses_document_id' => $document->id,
+                'notes' => $reason,
+            ]);
+
+            foreach ($movements as $movement) {
+                $batch = StockBatch::query()
+                    ->lockForUpdate()
+                    ->findOrFail($movement->stock_batch_id);
+
+                $reversalQuantity = bcmul((string) $movement->quantity, '-1', 2);
+                $newQuantity = bcadd((string) $batch->quantity_remaining, $reversalQuantity, 2);
+
+                if (bccomp($newQuantity, '0', 2) < 0) {
+                    throw new InvalidArgumentException(
+                        sprintf(
+                            'Stok batch tidak cukup untuk dibalik. Tersisa %s, dibutuhkan %s.',
+                            $batch->quantity_remaining,
+                            ltrim($reversalQuantity, '-'),
+                        ),
+                    );
+                }
+
+                $batch->quantity_remaining = $newQuantity;
+                $batch->save();
+
+                StockMovement::query()->create([
+                    'stock_document_id' => $reversal->id,
+                    'item_id' => $movement->item_id,
+                    'stock_batch_id' => $movement->stock_batch_id,
+                    'quantity' => $reversalQuantity,
+                    'unit_cost' => $movement->unit_cost,
+                    'unit_price' => $movement->unit_price,
+                ]);
+            }
+
+            if ($document->purchase_order_id !== null) {
+                app(PurchaseOrderService::class)->handleReceiptReversal($document);
+            }
+
+            return $reversal->load('stockMovements');
         });
     }
 }

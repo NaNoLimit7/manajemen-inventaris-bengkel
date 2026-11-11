@@ -28,6 +28,11 @@ class StoreStockInRequest extends FormRequest
         return [
             'occurred_on' => ['required', 'date'],
             'reference_number' => ['nullable', 'string', 'max:60'],
+            'supplier_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('suppliers', 'id')->where('is_active', true),
+            ],
             'notes' => ['nullable', 'string', 'max:1000'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.item_id' => [
@@ -104,6 +109,7 @@ class StoreStockInRequest extends FormRequest
         return [
             'occurred_on.required' => 'Tanggal transaksi wajib diisi.',
             'occurred_on.date' => 'Tanggal transaksi tidak valid.',
+            'supplier_id.exists' => 'Supplier tidak ditemukan atau tidak aktif.',
             'lines.required' => 'Tambahkan minimal satu barang.',
             'lines.min' => 'Tambahkan minimal satu barang.',
             'lines.*.item_id.required' => 'Barang wajib dipilih.',
@@ -126,6 +132,7 @@ class StoreStockInRequest extends FormRequest
         return [
             'occurred_on' => 'tanggal transaksi',
             'reference_number' => 'nomor faktur',
+            'supplier_id' => 'supplier',
             'notes' => 'catatan',
             'lines.*.item_id' => 'barang',
             'lines.*.quantity' => 'jumlah',

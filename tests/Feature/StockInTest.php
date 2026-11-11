@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Item;
+use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -136,6 +137,65 @@ class StockInTest extends TestCase
         $this->assertDatabaseHas('stock_batches', [
             'item_id' => $item->id,
             'expiry_date' => '2020-01-01',
+        ]);
+    }
+
+    public function test_create_page_lists_active_suppliers(): void
+    {
+        $activeSupplier = Supplier::factory()->create(['is_active' => true]);
+        Supplier::factory()->inactive()->create();
+
+        $response = $this->withBasicAuthCredentials()->get(route('stock.in.create'));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->has('suppliers', 1)
+            ->where('suppliers.0.id', $activeSupplier->id));
+    }
+
+    public function test_store_records_supplier_on_stock_in(): void
+    {
+        $item = Item::factory()->create(['has_expiry' => false]);
+        $supplier = Supplier::factory()->create();
+
+        $payload = $this->payload($item);
+        $payload['supplier_id'] = $supplier->id;
+
+        $response = $this->withBasicAuthCredentials()->post(route('stock.in.store'), $payload);
+
+        $response->assertRedirect(route('stock.in.create'));
+        $this->assertDatabaseHas('stock_documents', [
+            'type' => 'in',
+            'supplier_id' => $supplier->id,
+        ]);
+    }
+
+    public function test_inactive_supplier_is_rejected(): void
+    {
+        $item = Item::factory()->create(['has_expiry' => false]);
+        $supplier = Supplier::factory()->inactive()->create();
+
+        $payload = $this->payload($item);
+        $payload['supplier_id'] = $supplier->id;
+
+        $response = $this->withBasicAuthCredentials()->post(route('stock.in.store'), $payload);
+
+        $response->assertSessionHasErrors('supplier_id');
+        $this->assertDatabaseCount('stock_documents', 0);
+    }
+
+    public function test_stock_in_can_be_saved_without_supplier(): void
+    {
+        $item = Item::factory()->create(['has_expiry' => false]);
+
+        $response = $this->withBasicAuthCredentials()->post(
+            route('stock.in.store'),
+            $this->payload($item),
+        );
+
+        $response->assertRedirect(route('stock.in.create'));
+        $this->assertDatabaseHas('stock_documents', [
+            'type' => 'in',
+            'supplier_id' => null,
         ]);
     }
 

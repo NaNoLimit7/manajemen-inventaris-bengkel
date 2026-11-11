@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreStockInRequest;
 use App\Models\Item;
+use App\Models\Supplier;
 use App\Services\StockService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -30,6 +31,10 @@ class StockInController extends Controller
 
         return Inertia::render('Stock/In', [
             'items' => $items,
+            'suppliers' => Supplier::query()
+                ->active()
+                ->orderBy('name')
+                ->get(['id', 'name']),
             'defaultDate' => now()->toDateString(),
         ]);
     }

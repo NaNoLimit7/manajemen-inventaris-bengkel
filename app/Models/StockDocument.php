@@ -41,6 +41,21 @@ class StockDocument extends Model
         return $this->hasMany(StockMovement::class);
     }
 
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function purchaseOrder(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseOrder::class);
+    }
+
     public function reverses(): BelongsTo
     {
         return $this->belongsTo(self::class, 'reverses_document_id');

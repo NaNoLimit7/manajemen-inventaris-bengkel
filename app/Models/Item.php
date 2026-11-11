@@ -58,6 +58,11 @@ class Item extends Model
         return $this->hasMany(StockMovement::class);
     }
 
+    public function purchaseOrderItems(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderItem::class);
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);

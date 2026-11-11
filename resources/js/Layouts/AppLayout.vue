@@ -22,6 +22,11 @@ const navItems = [
     { label: 'Barang Masuk', href: '/stock/in' },
     { label: 'Barang Keluar', href: '/stock/out' },
     { label: 'Riwayat', href: '/stock/documents' },
+    { label: 'Penyesuaian', href: '/stock/adjustments' },
+    { label: 'Supplier', href: '/suppliers' },
+    { label: 'Pelanggan', href: '/customers' },
+    { label: 'Pesanan', href: '/purchase-orders' },
+    { label: 'Pengaturan', href: '/settings' },
 ];
 
 const isActive = (item) => {
@@ -50,12 +55,12 @@ const isActive = (item) => {
                     </span>
                 </Link>
 
-                <nav class="hidden items-center gap-1 lg:flex" aria-label="Navigasi utama">
+                <nav class="hidden items-center gap-0.5 overflow-x-auto lg:flex" aria-label="Navigasi utama">
                     <Link
                         v-for="item in navItems"
                         :key="item.href"
                         :href="item.href"
-                        class="rounded-xl px-3 py-2 text-sm font-medium transition"
+                        class="whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-medium transition xl:px-3 xl:text-sm"
                         :class="
                             isActive(item)
                                 ? 'bg-blue-50 text-blue-700'

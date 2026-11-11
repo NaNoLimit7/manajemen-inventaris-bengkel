@@ -4,10 +4,15 @@ import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ItemSearchSelect from '../../Components/ItemSearchSelect.vue';
 import MoneyInput from '../../Components/MoneyInput.vue';
+import SupplierSelect from '../../Components/SupplierSelect.vue';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const props = defineProps({
     items: {
+        type: Array,
+        default: () => [],
+    },
+    suppliers: {
         type: Array,
         default: () => [],
     },
@@ -20,6 +25,7 @@ const props = defineProps({
 const form = useForm({
     occurred_on: props.defaultDate,
     reference_number: '',
+    supplier_id: '',
     notes: '',
     lines: [createLine()],
 });
@@ -170,6 +176,16 @@ function submit() {
                             <p v-if="form.errors.reference_number" class="mt-1 text-sm text-red-600">
                                 {{ form.errors.reference_number }}
                             </p>
+                        </div>
+
+                        <div class="sm:col-span-3">
+                            <SupplierSelect
+                                v-model="form.supplier_id"
+                                :suppliers="suppliers"
+                                label="Supplier"
+                                placeholder="Tanpa supplier"
+                                :error="form.errors.supplier_id"
+                            />
                         </div>
 
                         <div class="sm:col-span-3">

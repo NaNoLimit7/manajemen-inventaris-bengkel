@@ -27,7 +27,13 @@ class StoreStockOutRequest extends FormRequest
     {
         return [
             'occurred_on' => ['required', 'date'],
-            'purpose' => ['required', Rule::in(['service', 'workshop_use', 'damaged_lost'])],
+            'purpose' => ['required', Rule::in(['sold', 'service', 'workshop_use', 'damaged_lost'])],
+            'customer_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('customers', 'id')->where('is_active', true),
+            ],
+            'customer_name' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.item_id' => [
@@ -37,6 +43,7 @@ class StoreStockOutRequest extends FormRequest
                 Rule::exists('items', 'id')->where('is_active', true),
             ],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
+            'lines.*.unit_price' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
@@ -46,6 +53,39 @@ class StoreStockOutRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            $purpose = (string) $this->input('purpose');
+            $customerName = trim((string) $this->input('customer_name', ''));
+            $customerId = $this->input('customer_id');
+
+            if ($purpose !== 'sold') {
+                if ($customerName !== '' || filled($customerId)) {
+                    $validator->errors()->add(
+                        'customer_id',
+                        'Pelanggan hanya dapat diisi untuk tujuan penjualan.',
+                    );
+                }
+            } else {
+                if ($customerName !== '' && filled($customerId)) {
+                    $validator->errors()->add(
+                        'customer_name',
+                        'Pilih pelanggan yang ada atau isi nama pelanggan baru, bukan keduanya.',
+                    );
+                }
+
+                $lineInputs = $this->input('lines', []);
+
+                if (is_array($lineInputs)) {
+                    foreach ($lineInputs as $index => $line) {
+                        if (! isset($line['unit_price']) || $line['unit_price'] === '' || $line['unit_price'] === null) {
+                            $validator->errors()->add(
+                                "lines.{$index}.unit_price",
+                                'Harga jual wajib diisi untuk barang yang dijual.',
+                            );
+                        }
+                    }
+                }
+            }
+
             $lines = $this->input('lines', []);
 
             if (! is_array($lines)) {
@@ -102,6 +142,8 @@ class StoreStockOutRequest extends FormRequest
             'occurred_on.date' => 'Tanggal transaksi tidak valid.',
             'purpose.required' => 'Tujuan barang keluar wajib dipilih.',
             'purpose.in' => 'Tujuan barang keluar tidak valid.',
+            'customer_id.exists' => 'Pelanggan tidak ditemukan atau tidak aktif.',
+            'customer_name.max' => 'Nama pelanggan baru maksimal 120 karakter.',
             'lines.required' => 'Tambahkan minimal satu barang.',
             'lines.min' => 'Tambahkan minimal satu barang.',
             'lines.*.item_id.required' => 'Barang wajib dipilih.',
@@ -110,6 +152,8 @@ class StoreStockOutRequest extends FormRequest
             'lines.*.quantity.required' => 'Jumlah wajib diisi.',
             'lines.*.quantity.numeric' => 'Jumlah harus berupa angka.',
             'lines.*.quantity.gt' => 'Jumlah harus lebih dari 0.',
+            'lines.*.unit_price.numeric' => 'Harga jual harus berupa angka.',
+            'lines.*.unit_price.min' => 'Harga jual tidak boleh negatif.',
         ];
     }
 
@@ -121,9 +165,12 @@ class StoreStockOutRequest extends FormRequest
         return [
             'occurred_on' => 'tanggal transaksi',
             'purpose' => 'tujuan barang keluar',
+            'customer_id' => 'pelanggan',
+            'customer_name' => 'nama pelanggan baru',
             'notes' => 'catatan',
             'lines.*.item_id' => 'barang',
             'lines.*.quantity' => 'jumlah',
+            'lines.*.unit_price' => 'harga jual',
         ];
     }
 }

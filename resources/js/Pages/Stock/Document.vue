@@ -1,5 +1,6 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DataTable from '../../Components/DataTable.vue';
 import { formatCurrency, formatDate, formatQuantity } from '../../utils/formatters';
@@ -10,6 +11,27 @@ const props = defineProps({
         required: true,
     },
 });
+
+const reverseForm = useForm({
+    reason: '',
+});
+
+const canReverse = computed(
+    () =>
+        props.document.type !== 'reversal' &&
+        !props.document.reversed_by &&
+        (props.document.stock_movements?.length ?? 0) > 0,
+);
+
+function submitReverse() {
+    if (!window.confirm('Batalkan dokumen transaksi ini? Stok akan dikembalikan.')) {
+        return;
+    }
+
+    reverseForm.post(`/stock/documents/${props.document.id}/reverse`, {
+        preserveScroll: true,
+    });
+}
 
 const typeLabels = {
     in: 'Masuk',
@@ -103,6 +125,20 @@ function formatSignedQuantity(movement) {
                     {{ document.stock_movements?.length ?? 0 }}
                 </p>
             </div>
+
+            <div v-if="document.supplier" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-medium text-slate-500">Supplier</p>
+                <p class="mt-2 text-lg font-semibold text-slate-900">
+                    {{ document.supplier.name }}
+                </p>
+            </div>
+
+            <div v-if="document.customer" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p class="text-sm font-medium text-slate-500">Pelanggan</p>
+                <p class="mt-2 text-lg font-semibold text-slate-900">
+                    {{ document.customer.name }}
+                </p>
+            </div>
         </div>
 
         <div
@@ -111,6 +147,83 @@ function formatSignedQuantity(movement) {
         >
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</p>
             <p class="mt-1 text-sm leading-6 text-slate-700">{{ document.notes }}</p>
+        </div>
+
+        <div
+            v-if="document.reversed_by"
+            class="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5"
+        >
+            <p class="text-sm font-semibold text-red-800">Dokumen ini sudah dibatalkan.</p>
+            <p class="mt-1 text-sm text-red-700">
+                Dokumen pembalik:
+                <Link
+                    :href="`/stock/documents/${document.reversed_by.id}`"
+                    class="font-medium underline hover:text-red-900"
+                >
+                    #{{ document.reversed_by.id }}
+                </Link>
+                · {{ formatDate(document.reversed_by.occurred_on) }}
+            </p>
+        </div>
+
+        <div
+            v-if="document.reverses"
+            class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5"
+        >
+            <p class="text-sm font-semibold text-amber-900">Dokumen pembalik</p>
+            <p class="mt-1 text-sm text-amber-800">
+                Membatalkan transaksi
+                <Link
+                    :href="`/stock/documents/${document.reverses.id}`"
+                    class="font-medium underline hover:text-amber-900"
+                >
+                    #{{ document.reverses.id }}
+                </Link>
+                · {{ formatDate(document.reverses.occurred_on) }}
+            </p>
+        </div>
+
+        <div
+            v-if="canReverse"
+            class="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        >
+            <h2 class="text-sm font-semibold text-slate-900">Batalkan Dokumen</h2>
+            <p class="mt-1 text-sm text-slate-600">
+                Pembatalan membuat dokumen pembalik dan mengembalikan stok. Tindakan ini tidak dapat dibatalkan.
+            </p>
+
+            <form class="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end" @submit.prevent="submitReverse">
+                <div class="flex-1">
+                    <label for="reverse-reason" class="mb-1 block text-sm font-medium text-slate-700">
+                        Alasan Pembatalan
+                    </label>
+                    <input
+                        id="reverse-reason"
+                        v-model="reverseForm.reason"
+                        type="text"
+                        maxlength="1000"
+                        required
+                        class="w-full rounded-xl border px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        :class="
+                            reverseForm.errors.reason
+                                ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+                                : 'border-slate-300'
+                        "
+                        placeholder="Contoh: salah input jumlah"
+                    />
+                    <p v-if="reverseForm.errors.reason" class="mt-1 text-sm text-red-600">
+                        {{ reverseForm.errors.reason }}
+                    </p>
+                </div>
+
+                <button
+                    type="submit"
+                    :disabled="reverseForm.processing"
+                    class="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {{ reverseForm.processing ? 'Membatalkan...' : 'Batalkan Dokumen' }}
+                </button>
+            </form>
         </div>
 
         <div class="mt-6">

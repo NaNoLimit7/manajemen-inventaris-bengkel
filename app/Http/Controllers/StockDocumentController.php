@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ReverseStockDocumentRequest;
 use App\Models\Item;
 use App\Models\StockDocument;
+use App\Services\StockService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 
 class StockDocumentController extends Controller
 {
@@ -43,6 +47,11 @@ class StockDocumentController extends Controller
     public function show(StockDocument $stockDocument): Response
     {
         $stockDocument->load([
+            'supplier',
+            'customer',
+            'purchaseOrder',
+            'reverses',
+            'reversedBy',
             'stockMovements' => fn ($query) => $query
                 ->with(['item', 'stockBatch'])
                 ->orderBy('id'),
@@ -51,5 +60,21 @@ class StockDocumentController extends Controller
         return Inertia::render('Stock/Document', [
             'document' => $stockDocument,
         ]);
+    }
+
+    public function reverse(
+        ReverseStockDocumentRequest $request,
+        StockDocument $stockDocument,
+        StockService $stockService,
+    ): RedirectResponse {
+        try {
+            $stockService->reverse($stockDocument, (string) $request->validated('reason'));
+        } catch (InvalidArgumentException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('stock.documents.show', $stockDocument)
+            ->with('success', 'Dokumen berhasil dibatalkan.');
     }
 }

@@ -1,11 +1,18 @@
 <script setup>
+import { computed, watch } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import ItemSearchSelect from '../../Components/ItemSearchSelect.vue';
-import { formatQuantity } from '../../utils/formatters';
+import CustomerSelect from '../../Components/CustomerSelect.vue';
+import MoneyInput from '../../Components/MoneyInput.vue';
+import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const props = defineProps({
     items: {
+        type: Array,
+        default: () => [],
+    },
+    customers: {
         type: Array,
         default: () => [],
     },
@@ -18,6 +25,8 @@ const props = defineProps({
 const form = useForm({
     occurred_on: props.defaultDate,
     purpose: '',
+    customer_id: '',
+    customer_name: '',
     notes: '',
     lines: [createLine()],
 });
@@ -26,6 +35,7 @@ function createLine() {
     return {
         item_id: '',
         quantity: 1,
+        unit_price: 0,
     };
 }
 
@@ -35,13 +45,43 @@ const findItem = (itemId) =>
 const lineItem = (line) => findItem(line.item_id);
 
 const purposeOptions = [
+    { value: 'sold', label: 'Dijual ke pelanggan' },
     { value: 'service', label: 'Dipakai servis' },
     { value: 'workshop_use', label: 'Pemakaian bengkel' },
     { value: 'damaged_lost', label: 'Rusak/hilang' },
 ];
 
+const isSale = computed(() => form.purpose === 'sold');
+
+watch(
+    () => form.purpose,
+    (purpose) => {
+        if (purpose !== 'sold') {
+            form.customer_id = '';
+            form.customer_name = '';
+            form.clearErrors('customer_id', 'customer_name');
+
+            return;
+        }
+
+        form.lines.forEach((line) => {
+            const item = lineItem(line);
+
+            if (item && (!line.unit_price || Number(line.unit_price) === 0)) {
+                line.unit_price = item.sale_price ?? 0;
+            }
+        });
+    },
+);
+
 function selectItem(line, itemId) {
     line.item_id = itemId;
+
+    const item = findItem(itemId);
+
+    if (item) {
+        line.unit_price = item.sale_price ?? 0;
+    }
 }
 
 function addLine() {
@@ -62,6 +102,14 @@ const lineExceedsStock = (line) => {
     return item ? Number(line.quantity) > Number(item.current_stock) : false;
 };
 
+const totalSales = computed(() =>
+    form.lines.reduce(
+        (total, line) =>
+            total + (Number(line.quantity) || 0) * (Number(line.unit_price) || 0),
+        0,
+    ),
+);
+
 function submit() {
     form.post('/stock/out', {
         preserveScroll: true,
@@ -77,7 +125,7 @@ function submit() {
                     <p class="text-sm font-semibold uppercase tracking-wide text-blue-600">Transaksi Stok</p>
                     <h1 class="mt-1 text-2xl font-bold tracking-tight text-slate-900">Barang Keluar</h1>
                     <p class="mt-1 text-sm text-slate-600">
-                        Catat barang yang dipakai servis, pemakaian bengkel, atau rusak/hilang.
+                        Catat barang yang dijual, dipakai servis, pemakaian bengkel, atau rusak/hilang.
                     </p>
                 </div>
 
@@ -147,11 +195,21 @@ function submit() {
                                     {{ option.label }}
                                 </option>
                             </select>
-                            <p class="mt-1 text-xs text-slate-500">
-                                Penjualan ke pelanggan akan ditambahkan pada tahap berikutnya.
-                            </p>
                             <p v-if="form.errors.purpose" class="mt-1 text-sm text-red-600">
                                 {{ form.errors.purpose }}
+                            </p>
+                        </div>
+
+                        <div v-if="isSale" class="sm:col-span-3">
+                            <CustomerSelect
+                                v-model="form.customer_id"
+                                v-model:customer-name="form.customer_name"
+                                :customers="customers"
+                                :error="form.errors.customer_id"
+                                :name-error="form.errors.customer_name"
+                            />
+                            <p class="mt-1 text-xs text-slate-500">
+                                Pelanggan opsional. Pilih pelanggan yang ada atau isi nama pelanggan baru.
                             </p>
                         </div>
 
@@ -216,7 +274,7 @@ function submit() {
                                 </button>
                             </div>
 
-                            <div class="grid gap-4 sm:grid-cols-3">
+                            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                 <div class="sm:col-span-2">
                                     <ItemSearchSelect
                                         :model-value="line.item_id"
@@ -262,9 +320,17 @@ function submit() {
                                     </p>
                                 </div>
 
+                                <MoneyInput
+                                    v-if="isSale"
+                                    :id="`unit-price-${index}`"
+                                    v-model="line.unit_price"
+                                    label="Harga Jual / Unit"
+                                    :error="lineError(index, 'unit_price')"
+                                />
+
                                 <div
                                     v-if="lineItem(line)"
-                                    class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:col-span-3"
+                                    class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:col-span-2 lg:col-span-4"
                                 >
                                     Stok saat ini:
                                     <span class="font-medium text-slate-800">
@@ -277,6 +343,18 @@ function submit() {
                                     >
                                         Jumlah melebihi stok tersedia.
                                     </span>
+                                    <template v-if="isSale">
+                                        <span class="mx-2 text-slate-300">·</span>
+                                        Harga jual standar:
+                                        <span class="font-medium text-slate-800">
+                                            {{ formatCurrency(lineItem(line).sale_price) }}
+                                        </span>
+                                        <span class="mx-2 text-slate-300">·</span>
+                                        Subtotal:
+                                        <span class="font-medium text-slate-800">
+                                            {{ formatCurrency((Number(line.quantity) || 0) * (Number(line.unit_price) || 0)) }}
+                                        </span>
+                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -284,9 +362,13 @@ function submit() {
                 </div>
 
                 <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                    <p class="text-sm text-slate-500">
-                        Stok tidak boleh negatif. Transaksi akan ditolak jika stok tidak cukup.
-                    </p>
+                    <div class="text-sm text-slate-500">
+                        <p v-if="isSale">
+                            Total penjualan:
+                            <span class="font-semibold text-slate-900">{{ formatCurrency(totalSales) }}</span>
+                        </p>
+                        <p v-else>Stok tidak boleh negatif. Transaksi akan ditolak jika stok tidak cukup.</p>
+                    </div>
 
                     <div class="flex flex-wrap items-center gap-3">
                         <Link
