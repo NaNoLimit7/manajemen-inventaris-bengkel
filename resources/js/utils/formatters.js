@@ -12,6 +12,11 @@ const dateFormatter = new Intl.DateTimeFormat('id-ID', {
     dateStyle: 'medium',
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+});
+
 export function formatCurrency(value) {
     return currencyFormatter.format(Number(value ?? 0));
 }
@@ -32,4 +37,18 @@ export function formatDate(value) {
     }
 
     return dateFormatter.format(date);
+}
+
+export function formatDateTime(value) {
+    if (!value) {
+        return '-';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    return dateTimeFormatter.format(date);
 }

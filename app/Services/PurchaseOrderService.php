@@ -15,6 +15,17 @@ use RuntimeException;
 
 class PurchaseOrderService
 {
+    /**
+     * @var array<string, string>
+     */
+    private const STATUS_LABELS = [
+        PurchaseOrder::STATUS_DRAFT => 'Draft',
+        PurchaseOrder::STATUS_ORDERED => 'Dipesan',
+        PurchaseOrder::STATUS_PARTIALLY_RECEIVED => 'Diterima sebagian',
+        PurchaseOrder::STATUS_COMPLETED => 'Selesai',
+        PurchaseOrder::STATUS_CANCELLED => 'Dibatalkan',
+    ];
+
     public function __construct(
         private readonly AlertService $alertService,
         private readonly StockService $stockService,
@@ -300,6 +311,51 @@ class PurchaseOrderService
         $purchaseOrder->update(['status' => $status]);
     }
 
+    public function formatText(PurchaseOrder $purchaseOrder): string
+    {
+        $purchaseOrder->loadMissing(['supplier', 'items.item']);
+
+        $date = $purchaseOrder->ordered_on ?? $purchaseOrder->created_at;
+
+        $lines = [
+            'PESANAN PEMBELIAN',
+            'Nomor: '.$purchaseOrder->number,
+            'Tanggal: '.$date?->format('d/m/Y'),
+            'Supplier: '.($purchaseOrder->supplier?->name ?? 'Supplier tidak ditemukan'),
+            'Status: '.(self::STATUS_LABELS[$purchaseOrder->status] ?? $purchaseOrder->status),
+            '',
+            'Daftar Barang:',
+        ];
+
+        $total = '0.00';
+
+        foreach ($purchaseOrder->items as $index => $line) {
+            $subtotal = bcmul((string) $line->quantity_ordered, (string) $line->unit_price, 2);
+            $total = bcadd($total, $subtotal, 2);
+
+            $lines[] = sprintf(
+                '%d. %s (%s)',
+                $index + 1,
+                $line->item?->name ?? 'Barang tidak ditemukan',
+                $line->item?->code ?? '-',
+            );
+            $lines[] = sprintf(
+                '   %s %s x %s = %s',
+                $this->formatQuantityText($line->quantity_ordered),
+                $line->item?->unit ?? '',
+                $this->formatMoney($line->unit_price),
+                $this->formatMoney($subtotal),
+            );
+        }
+
+        $lines[] = '';
+        $lines[] = 'Total: '.$this->formatMoney($total);
+        $lines[] = '';
+        $lines[] = 'Catatan: '.($purchaseOrder->notes ?: '-');
+
+        return implode("\n", $lines);
+    }
+
     /**
      * @return Collection<int, array<string, mixed>>
      */
@@ -327,6 +383,18 @@ class PurchaseOrderService
                 ];
             })
             ->values();
+    }
+
+    private function formatMoney(mixed $value): string
+    {
+        return 'Rp'.number_format((float) $value, 2, ',', '.');
+    }
+
+    private function formatQuantityText(mixed $value): string
+    {
+        $formatted = number_format((float) $value, 2, ',', '.');
+
+        return rtrim(rtrim($formatted, '0'), ',');
     }
 
     private function findActiveSupplier(int $supplierId): Supplier

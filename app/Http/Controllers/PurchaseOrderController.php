@@ -91,7 +91,7 @@ class PurchaseOrderController extends Controller
             ->with('success', 'Pesanan pembelian berhasil dibuat.');
     }
 
-    public function show(PurchaseOrder $purchaseOrder): Response
+    public function show(PurchaseOrder $purchaseOrder, PurchaseOrderService $purchaseOrderService): Response
     {
         $purchaseOrder->load([
             'supplier',
@@ -101,6 +101,7 @@ class PurchaseOrderController extends Controller
 
         return Inertia::render('PurchaseOrders/Show', [
             'purchaseOrder' => $purchaseOrder,
+            'text' => $purchaseOrderService->formatText($purchaseOrder),
         ]);
     }
 

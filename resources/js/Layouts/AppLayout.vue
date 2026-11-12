@@ -23,6 +23,7 @@ const navItems = [
     { label: 'Barang Keluar', href: '/stock/out' },
     { label: 'Riwayat', href: '/stock/documents' },
     { label: 'Penyesuaian', href: '/stock/adjustments' },
+    { label: 'Laporan', href: '/reports/stock', prefixes: ['/reports'] },
     { label: 'Supplier', href: '/suppliers' },
     { label: 'Pelanggan', href: '/customers' },
     { label: 'Pesanan', href: '/purchase-orders' },
@@ -31,6 +32,12 @@ const navItems = [
 
 const isActive = (item) => {
     const path = page.url.split('?')[0];
+
+    if (item.prefixes) {
+        return item.prefixes.some(
+            (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+        );
+    }
 
     return item.exact
         ? path === item.href
@@ -50,7 +57,7 @@ const isActive = (item) => {
                     >
                         IB
                     </span>
-                    <span class="hidden text-base font-semibold tracking-tight text-slate-900 sm:block">
+                    <span class="hidden whitespace-nowrap text-base font-semibold tracking-tight text-slate-900 2xl:block">
                         {{ appName }}
                     </span>
                 </Link>
@@ -60,7 +67,7 @@ const isActive = (item) => {
                         v-for="item in navItems"
                         :key="item.href"
                         :href="item.href"
-                        class="whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-medium transition xl:px-3 xl:text-sm"
+                        class="whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium transition xl:px-2.5"
                         :class="
                             isActive(item)
                                 ? 'bg-blue-50 text-blue-700'

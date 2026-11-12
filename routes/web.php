@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\ItemImportController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReportCsvController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockDocumentController;
@@ -37,6 +40,21 @@ Route::post('/stock/documents/{stockDocument}/reverse', [StockDocumentController
 
 Route::get('/settings', [SettingController::class, 'edit'])->name('settings.edit');
 Route::put('/settings', [SettingController::class, 'update'])->name('settings.update');
+
+Route::get('/reports/audit', [AuditLogController::class, 'index'])->name('reports.audit');
+Route::get('/reports/stock', [ReportController::class, 'stock'])->name('reports.stock');
+Route::get('/reports/stock-card/{item}', [ReportController::class, 'stockCard'])
+    ->where('item', '[0-9]+')
+    ->name('reports.stock-card');
+Route::get('/reports/sales', [ReportController::class, 'sales'])->name('reports.sales');
+Route::get('/reports/alerts', [ReportController::class, 'alerts'])->name('reports.alerts');
+
+Route::get('/reports/stock.csv', [ReportCsvController::class, 'stock'])->name('reports.stock.csv');
+Route::get('/reports/stock-card/{item}.csv', [ReportCsvController::class, 'stockCard'])
+    ->where('item', '[0-9]+')
+    ->name('reports.stock-card.csv');
+Route::get('/reports/sales.csv', [ReportCsvController::class, 'sales'])->name('reports.sales.csv');
+Route::get('/reports/alerts.csv', [ReportCsvController::class, 'alerts'])->name('reports.alerts.csv');
 
 Route::resource('suppliers', SupplierController::class)->except('show');
 Route::resource('customers', CustomerController::class);

@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import DataTable from '../../Components/DataTable.vue';
@@ -10,7 +10,14 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    text: {
+        type: String,
+        default: '',
+    },
 });
+
+const showText = ref(false);
+const copied = ref(false);
 
 const statusLabels = {
     draft: 'Draft',
@@ -77,6 +84,45 @@ function cancelOrder() {
 
     router.post(`/purchase-orders/${props.purchaseOrder.id}/cancel`, {}, { preserveScroll: true });
 }
+
+async function copyText() {
+    try {
+        await navigator.clipboard.writeText(props.text);
+    } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = props.text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+    }
+
+    copied.value = true;
+    window.setTimeout(() => {
+        copied.value = false;
+    }, 2000);
+}
+
+function printText() {
+    const printWindow = window.open('', '_blank', 'width=720,height=800');
+
+    if (!printWindow) {
+        return;
+    }
+
+    const escapeHtml = (value) =>
+        String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+
+    printWindow.document.write(
+        `<!doctype html><html><head><title>${escapeHtml(props.purchaseOrder.number)}</title></head><body style="padding:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"><pre style="white-space:pre-wrap">${escapeHtml(props.text)}</pre></body></html>`,
+    );
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+}
 </script>
 
 <template>
@@ -96,6 +142,13 @@ function cancelOrder() {
             </div>
 
             <div class="flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    @click="showText = !showText"
+                >
+                    Teks PO
+                </button>
                 <Link
                     href="/purchase-orders"
                     class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
@@ -172,6 +225,38 @@ function cancelOrder() {
         >
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</p>
             <p class="mt-1 text-sm leading-6 text-slate-700">{{ purchaseOrder.notes }}</p>
+        </div>
+
+        <div
+            v-if="showText"
+            class="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        >
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Teks Pesanan</p>
+                    <p class="mt-1 text-sm text-slate-600">Salin atau cetak teks ini untuk dikirim ke supplier.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        @click="copyText"
+                    >
+                        {{ copied ? 'Tersalin' : 'Salin' }}
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                        @click="printText"
+                    >
+                        Cetak
+                    </button>
+                </div>
+            </div>
+
+            <pre
+                class="mt-4 max-h-96 overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-6 whitespace-pre-wrap text-slate-700"
+            >{{ text }}</pre>
         </div>
 
         <div class="mt-6">

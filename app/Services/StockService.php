@@ -263,7 +263,16 @@ class StockService
                 throw new InvalidArgumentException('Tidak ada selisih stok yang perlu disesuaikan.');
             }
 
-            return $document->load('stockMovements');
+            $document->load('stockMovements.item');
+
+            app(AuditService::class)->record(
+                'stock.adjusted',
+                $document,
+                null,
+                $this->auditPayload($document),
+            );
+
+            return $document;
         });
     }
 
@@ -341,7 +350,49 @@ class StockService
                 app(PurchaseOrderService::class)->handleReceiptReversal($document);
             }
 
-            return $reversal->load('stockMovements');
+            $reversal->load('stockMovements.item');
+
+            app(AuditService::class)->record(
+                'stock.reversed',
+                $reversal,
+                null,
+                $this->auditPayload($reversal),
+            );
+
+            return $reversal;
         });
+    }
+
+    /**
+     * @return array{document: array<string, mixed>, movements: array<int, array<string, mixed>>}
+     */
+    private function auditPayload(StockDocument $document): array
+    {
+        return [
+            'document' => [
+                'id' => $document->id,
+                'type' => $document->type,
+                'purpose' => $document->purpose,
+                'occurred_on' => $document->occurred_on?->toDateString(),
+                'reference_number' => $document->reference_number,
+                'supplier_id' => $document->supplier_id,
+                'customer_id' => $document->customer_id,
+                'purchase_order_id' => $document->purchase_order_id,
+                'reverses_document_id' => $document->reverses_document_id,
+                'notes' => $document->notes,
+            ],
+            'movements' => $document->stockMovements
+                ->map(fn (StockMovement $movement): array => [
+                    'id' => $movement->id,
+                    'item_id' => $movement->item_id,
+                    'item_name' => $movement->item?->name,
+                    'stock_batch_id' => $movement->stock_batch_id,
+                    'quantity' => (string) $movement->quantity,
+                    'unit_cost' => $movement->unit_cost !== null ? (string) $movement->unit_cost : null,
+                    'unit_price' => $movement->unit_price !== null ? (string) $movement->unit_price : null,
+                ])
+                ->values()
+                ->all(),
+        ];
     }
 }
